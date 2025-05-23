@@ -162,6 +162,7 @@ const KNOWN_DIRECTIVE_NAMES: &[&str] = &[
     "needs-sanitizer-shadow-call-stack",
     "needs-sanitizer-support",
     "needs-sanitizer-thread",
+    "needs-sanitizer-realtime",
     "needs-std-debug-assertions",
     "needs-subprocess",
     "needs-symlink",
