@@ -80,6 +80,11 @@ pub(super) fn handle_needs(
             ignore_reason: "ignored on targets without SafeStack support",
         },
         Need {
+            name: "needs-sanitizer-realtime",
+            condition: cache.sanitizer_realtime,
+            ignore_reason: "ignored on targets without realtime sanitizer support",
+        },
+        Need {
             name: "needs-enzyme",
             condition: config.has_enzyme,
             ignore_reason: "ignored when LLVM Enzyme is disabled",
@@ -327,6 +332,7 @@ pub(super) struct CachedNeedsConditions {
     sanitizer_memtag: bool,
     sanitizer_shadow_call_stack: bool,
     sanitizer_safestack: bool,
+    sanitizer_realtime: bool,
     xray: bool,
     rust_lld: bool,
     dlltool: bool,
@@ -353,6 +359,7 @@ impl CachedNeedsConditions {
             sanitizer_memtag: sanitizers.contains(&Sanitizer::Memtag),
             sanitizer_shadow_call_stack: sanitizers.contains(&Sanitizer::ShadowCallStack),
             sanitizer_safestack: sanitizers.contains(&Sanitizer::Safestack),
+            sanitizer_realtime: sanitizers.contains(&Sanitizer::Realtime),
             xray: config.target_cfg().xray,
 
             // For tests using the `needs-rust-lld` directive (e.g. for `-Clink-self-contained=+linker`),

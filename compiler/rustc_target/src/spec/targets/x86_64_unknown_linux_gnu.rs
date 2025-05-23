@@ -17,7 +17,8 @@ pub(crate) fn target() -> Target {
         | SanitizerSet::LEAK
         | SanitizerSet::MEMORY
         | SanitizerSet::SAFESTACK
-        | SanitizerSet::THREAD;
+        | SanitizerSet::THREAD
+        | SanitizerSet::REALTIME;
     base.supports_xray = true;
 
     // When we're asked to use the `rust-lld` linker by default, set the appropriate lld-using

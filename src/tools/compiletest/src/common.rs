@@ -169,6 +169,7 @@ pub enum Sanitizer {
     ShadowCallStack,
     Thread,
     Hwaddress,
+    Realtime,
 }
 
 /// Configuration for compiletest
