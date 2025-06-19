@@ -25,6 +25,8 @@ This feature allows for use of one of following sanitizers:
   * [LeakSanitizer](#leaksanitizer) a run-time memory leak detector.
   * [MemorySanitizer](#memorysanitizer) a detector of uninitialized reads.
   * [ThreadSanitizer](#threadsanitizer) a fast data race detector.
+  * [RealtimeSanitizer](#realtimesanitizer) a detector of blocking functions
+    in realtime contexts.
 
 * Those that apart from testing, may be used in production:
   * [ControlFlowIntegrity](#controlflowintegrity) LLVM Control Flow Integrity
@@ -43,11 +45,11 @@ This feature allows for use of one of following sanitizers:
 
 To enable a sanitizer compile with `-Zsanitizer=address`, `-Zsanitizer=cfi`,
 `-Zsanitizer=dataflow`,`-Zsanitizer=hwaddress`, `-Zsanitizer=leak`,
-`-Zsanitizer=memory`, `-Zsanitizer=memtag`, `-Zsanitizer=shadow-call-stack`, or
-`-Zsanitizer=thread`. You might also need the `--target` and `build-std` flags.
-If you're working with other languages that are also instrumented with sanitizers,
-you might need the `external-clangrt` flag. See the section on
-[working with other languages](#working-with-other-languages).
+`-Zsanitizer=memory`, `-Zsanitizer=memtag`, `-Zsanitizer=shadow-call-stack`,
+`-Zsanitizer=thread` or `-Zsanitizer=realtime`. You might also need the `--target`
+and `build-std` flags. If you're working with other languages that are also
+instrumented with sanitizers, you might need the `external-clangrt` flag. See
+the section on [working with other languages](#working-with-other-languages).
 
 Example:
 ```shell
@@ -865,6 +867,69 @@ WARNING: ThreadSanitizer: data race (pid=10574)
   Location is global 'example::A::h43ac149ddf992709' of size 8 at 0x5632dfe3d030 (example+0x000000bd9030)
 ```
 
+# RealtimeSanitizer
+RealtimeSanitizer detects blocking calls in realtime contexts. If enabled,
+it won't sanitize the whole program, it needs to be enabled explicitly.
+
+Controlling this sanitizer using attributes isn't yet supported in Rust. The
+sanitizer exports the following functions that allow using it. These functions
+are not stable. When the attributes are added to rust, using them over these
+functions is recommended.
+
+```rust
+extern "C" {
+  /// Enters a realtime context. Can be nested.
+  pub fn __rtsan_realtime_enter();
+  /// Exits a realtime context. After calling this the program could still be in a realtime context,
+  /// as they can be nested.
+  pub fn __rtsan_realtime_exit();
+  /// Disables the sanitizer.
+  pub fn __rtsan_disable();
+  /// Enables the sanitizer again.
+  pub fn __rtsan_enable();
+  /// Should be called before any other sanitizer calls are made.
+  pub fn __rtsan_ensure_initialized();
+  /// Notify the sanitizer that a blocking function was called. This will trigger a violation report.
+  pub fn __rtsan_notify_blocking_call(blocking_function_name: *const core::ffi::c_char);
+}
+```
+
+See the [Clang RealtimeSanitizer documentation][clang-rtsan] for more details.
+
+## Example
+
+```rust
+fn main() {
+  unsafe {
+    __rtsan_ensure_initialized();
+    __rtsan_realtime_enter();
+  }
+  let vec = vec![0, 1, 2];
+  unsafe {
+    __rtsan_realtime_exit();
+  }
+  println!("alloc not detected")
+}
+```
+
+```shell
+==8670==ERROR: RealtimeSanitizer: unsafe-library-call
+Intercepted call to real-time unsafe function `malloc` in real-time context!
+    #0 0x00010107b0d8 in malloc rtsan_interceptors_posix.cpp:792
+    #1 0x000100d94e70 in alloc::alloc::Global::alloc_impl::h9e1fc3206c868eea+0xa0 (realtime_vec:arm64+0x100000e70)
+    #2 0x000100d94d90 in alloc::alloc::exchange_malloc::hd45b5788339eb5c8+0x48 (realtime_vec:arm64+0x100000d90)
+    #3 0x000100d95020 in realtime_vec::main::hea6bd69b03eb9ca1+0x24 (realtime_vec:arm64+0x100001020)
+    #4 0x000100d94a28 in core::ops::function::FnOnce::call_once::h493b6cb9dd87d87c+0xc (realtime_vec:arm64+0x100000a28)
+    #5 0x000100d949b8 in std::sys::backtrace::__rust_begin_short_backtrace::hfcddb06c73c19eea+0x8 (realtime_vec:arm64+0x1000009b8)
+    #6 0x000100d9499c in std::rt::lang_start::_$u7b$$u7b$closure$u7d$$u7d$::h202288c05a2064f0+0xc (realtime_vec:arm64+0x10000099c)
+    #7 0x000100d9fa34 in std::rt::lang_start_internal::h6c763158a05ac05f+0x6c (realtime_vec:arm64+0x10000ba34)
+    #8 0x000100d94980 in std::rt::lang_start::h1c29cc56df0598b4+0x38 (realtime_vec:arm64+0x100000980)
+    #9 0x000100d95118 in main+0x20 (realtime_vec:arm64+0x100001118)
+    #10 0x000183a46b94 in start+0x17b8 (dyld:arm64+0xfffffffffff3ab94)
+
+SUMMARY: RealtimeSanitizer: unsafe-library-call rtsan_interceptors_posix.cpp:792 in malloc
+```
+
 # Instrumentation of external dependencies and std
 
 The sanitizers to varying degrees work correctly with partially instrumented
@@ -918,6 +983,7 @@ Sanitizers produce symbolized stacktraces when llvm-symbolizer binary is in `PAT
 * [MemorySanitizer in Clang][clang-msan]
 * [MemTagSanitizer in LLVM][llvm-memtag]
 * [ThreadSanitizer in Clang][clang-tsan]
+* [RealtimeSanitizer in Clang][clang-rtsan]
 
 [clang-asan]: https://clang.llvm.org/docs/AddressSanitizer.html
 [clang-cfi]: https://clang.llvm.org/docs/ControlFlowIntegrity.html
@@ -926,6 +992,7 @@ Sanitizers produce symbolized stacktraces when llvm-symbolizer binary is in `PAT
 [clang-kcfi]: https://clang.llvm.org/docs/ControlFlowIntegrity.html#fsanitize-kcfi
 [clang-lsan]: https://clang.llvm.org/docs/LeakSanitizer.html
 [clang-msan]: https://clang.llvm.org/docs/MemorySanitizer.html
+[clan-rtsan]: https://clang.llvm.org/docs/RealtimeSanitizer.html
 [clang-safestack]: https://clang.llvm.org/docs/SafeStack.html
 [clang-scs]: https://clang.llvm.org/docs/ShadowCallStack.html
 [clang-tsan]: https://clang.llvm.org/docs/ThreadSanitizer.html
