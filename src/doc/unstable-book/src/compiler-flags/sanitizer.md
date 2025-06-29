@@ -24,9 +24,9 @@ This feature allows for use of one of following sanitizers:
     AddressSanitizer, but based on partial hardware assistance.
   * [LeakSanitizer](#leaksanitizer) a run-time memory leak detector.
   * [MemorySanitizer](#memorysanitizer) a detector of uninitialized reads.
+  * [RealtimeSanitizer](#realtimesanitizer) a detector of functions with
+    non-deterministic execution time in realtime contexts.
   * [ThreadSanitizer](#threadsanitizer) a fast data race detector.
-  * [RealtimeSanitizer](#realtimesanitizer) a detector of blocking functions
-    in realtime contexts.
 
 * Those that apart from testing, may be used in production:
   * [ControlFlowIntegrity](#controlflowintegrity) LLVM Control Flow Integrity
@@ -45,9 +45,9 @@ This feature allows for use of one of following sanitizers:
 
 To enable a sanitizer compile with `-Zsanitizer=address`, `-Zsanitizer=cfi`,
 `-Zsanitizer=dataflow`,`-Zsanitizer=hwaddress`, `-Zsanitizer=leak`,
-`-Zsanitizer=memory`, `-Zsanitizer=memtag`, `-Zsanitizer=shadow-call-stack`,
-`-Zsanitizer=thread` or `-Zsanitizer=realtime`. You might also need the `--target`
-and `build-std` flags. If you're working with other languages that are also
+`-Zsanitizer=memory`, `-Zsanitizer=memtag`, `-Zsanitizer=realtime`,
+`-Zsanitizer=shadow-call-stack` or `-Zsanitizer=thread`. You might also need the
+`--target` and `build-std` flags. If you're working with other languages that are also
 instrumented with sanitizers, you might need the `external-clangrt` flag. See
 the section on [working with other languages](#working-with-other-languages).
 
@@ -868,8 +868,13 @@ WARNING: ThreadSanitizer: data race (pid=10574)
 ```
 
 # RealtimeSanitizer
-RealtimeSanitizer detects blocking calls in realtime contexts. If enabled,
-it won't sanitize the whole program, it needs to be enabled explicitly.
+RealtimeSanitizer detects non-deterministic execution time calls in realtime contexts.
+Usafe of RTSan is on a function-by-function basis. The sanitizer only inspects code that
+is marked as being real-time sensitive. Currently this is done with the functions
+`__rtsan_realtime_enter()` and `__rtsan_realtime_exit()`. Any function that is subject to
+real-time contraints must call `__rtsan_realtime_enter()` at its entry point and
+`__rtsan_realtime_exit()` at every exit point. To not miss any exit points, it is
+recommended to use a guard object that exits the real-time context on drop
 
 Controlling this sanitizer using attributes isn't yet supported in Rust. The
 sanitizer exports the following functions that allow using it. These functions
@@ -877,19 +882,26 @@ are not stable. When the attributes are added to rust, using them over these
 functions is recommended.
 
 ```rust
+/// Each call to `__rtsan_realtime_enter()` must be matched with exactly one call to `__rtsan_realtime_exit()`.
+/// The same goes for `__rtsan_disable()` with `__rtsan_enable()`
 extern "C" {
-  /// Enters a realtime context. Can be nested.
+  /// Enters a realtime context. Can be nested. Must be matched with one later call to `__rtsan_realtime_exit()`.
   pub fn __rtsan_realtime_enter();
-  /// Exits a realtime context. After calling this the program could still be in a realtime context,
-  /// as they can be nested.
+  /// Exits a realtime context. Must be matched to a preceding call to `__rtsan_realtime_enter()`.
+  /// After calling this the program could still be in a realtime context, as they can be nested.
   pub fn __rtsan_realtime_exit();
-  /// Disables the sanitizer.
+  /// Disables the sanitizer. Must be matched to a later call to `__rtsan_enable()`.
+  /// Useful for situations where you know the systemcall you do has a deterministic execution time.
   pub fn __rtsan_disable();
-  /// Enables the sanitizer again.
+  /// Enables the sanitizer again. Must be matched to a preceding call to `__rtsan_disable()`.
+  /// Useful when you know that a systemcall you do has a deterministic execution time in that situation.
   pub fn __rtsan_enable();
-  /// Should be called before any other sanitizer calls are made.
+  /// Must be called before any other sanitizer calls are made. You should place this at the entry point of
+  /// your program.
   pub fn __rtsan_ensure_initialized();
-  /// Notify the sanitizer that a blocking function was called. This will trigger a violation report.
+  /// To mark your function as one with a non-deterministic execution time, place this call as the first line
+  /// in the function. If rtsan hits this call while in a real-time context it will about in the same way that
+  /// calling an illegal system call does.
   pub fn __rtsan_notify_blocking_call(blocking_function_name: *const core::ffi::c_char);
 }
 ```
