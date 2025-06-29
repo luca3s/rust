@@ -82,7 +82,7 @@ pub(super) fn handle_needs(
         Need {
             name: "needs-sanitizer-realtime",
             condition: cache.sanitizer_realtime,
-            ignore_reason: "ignored on targets without realtime sanitizer support",
+            ignore_reason: "ignored on targets without RealtimeSanitizer support",
         },
         Need {
             name: "needs-enzyme",
